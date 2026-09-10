@@ -81,21 +81,22 @@ def main():
     
     try:
         db_name = "bronze-cheska-glue-training"
-        orders_table = "olist_orders_dataset_csv"
-        payments_table = "olist_order_payments_dataset_csv"
+        orders_table = "orders"
+        payments_table = "payments"
         silver_passed_path = "s3://cheska-s3-medallion/silver/passed/"
-        silver_quarantine_orders_path = "s3://cheska-s3-medallion/silver/quarantine/orders/"
-        silver_quarantine_payments_path = "s3://cheska-s3-medallion/silver/quarantine/payments/"
+        silver_quarantine_orders_path = "s3://cheska-s3-medallion/quarantine/orders/"
+        silver_quarantine_payments_path = "s3://cheska-s3-medallion/quarantine/payments/"
 
-        # kept data as dynamicframe at ingestion
+        # reading the data as catalog tables in DynamicFrames
         orders_dyf = read_datacatalog(glueContext, db_name, orders_table)
         payments_dyf = read_datacatalog(glueContext, db_name, payments_table)
 
-        # called the function of dqdl in execution flow
+        # call the dqdl ruleset function on the orders dataset
         passed_orders_df, quarantine_orders_df = evaluate_and_split_dqdl(
             glueContext, orders_dyf, "orders_dqdl_ruleset"
         )
 
+        # call the dqdl ruleset function on the payments dataset
         passed_payments_df, quarantine_payments_df = evaluate_and_split_dqdl(
             glueContext, payments_dyf, "payments_dqdl_ruleset"
         )
