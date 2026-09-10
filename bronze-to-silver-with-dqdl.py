@@ -8,6 +8,8 @@ from awsglue.job import Job
 from pyspark.sql.functions import col
 from awsglue.dynamicframe import DynamicFrame
 from awsgluedq.transforms import EvaluateDataQuality
+from pyspark.sql.functions import trim
+
 
 def read_datacatalog(glueContext, db_name, table_name):
     try:
@@ -84,8 +86,8 @@ def main():
         orders_table = "orders"
         payments_table = "payments"
         silver_passed_path = "s3://cheska-s3-medallion/silver/passed/"
-        silver_quarantine_orders_path = "s3://cheska-s3-medallion/quarantine/orders/"
-        silver_quarantine_payments_path = "s3://cheska-s3-medallion/quarantine/payments/"
+        silver_quarantine_orders_path = "s3://cheska-s3-medallion/silver/quarantine/orders/"
+        silver_quarantine_payments_path = "s3://cheska-s3-medallion/silver/quarantine/payments/"
 
         # reading the data as catalog tables in DynamicFrames
         orders_dyf = read_datacatalog(glueContext, db_name, orders_table)
@@ -104,6 +106,11 @@ def main():
         write_to_silver_s3(quarantine_orders_df, silver_quarantine_orders_path)
         write_to_silver_s3(quarantine_payments_df, silver_quarantine_payments_path)
         
+        # Clean order_id column before join
+        passed_orders_df = passed_orders_df.withColumn("order_id", trim(col("order_id")))
+        passed_payments_df = passed_payments_df.withColumn("order_id", trim(col("order_id")))
+
+        # Perform inner join
         join_pass_df = passed_orders_df.join(passed_payments_df, on="order_id", how="inner")
         
         write_to_silver_s3(join_pass_df, silver_passed_path)
