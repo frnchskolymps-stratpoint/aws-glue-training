@@ -112,14 +112,18 @@ def build_fact_orders(normalized_df):
 def write_iceberg(df, table_name):
     table_identifier = f"{ICEBERG_CATALOG}.`{GOLD_DATABASE}`.{table_name}"
     table_location = f"{GOLD_WAREHOUSE_PATH}{table_name}/"
-    (
+    writer = (
         df.writeTo(table_identifier)
         .using("iceberg")
         .tableProperty("location", table_location)
         .tableProperty("format-version", "2")
         .tableProperty("write.format.default", "parquet")
-        .create()
     )
+
+    if table_name == "fact_orders":
+        writer = writer.partitionedBy("order_purchase_date_key")
+
+    writer.create()
 
 
 def main():
