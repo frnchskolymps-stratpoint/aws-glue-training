@@ -112,16 +112,18 @@ def build_fact_orders(normalized_df):
                 F.col("order_delivered_customer_date")
                 > F.col("order_estimated_delivery_date")
             ),
-            F.lit(True),
-        ).otherwise(F.lit(False)).alias("is_late_delivery"),
+            F.lit(1),
+        ).otherwise(F.lit(0)).cast("int").alias("is_late_delivery"),
     )
 
 # Save / write to Iceberg tables in the gold layer
 def write_iceberg(df, table_name):
     table_identifier = f"{ICEBERG_CATALOG}.`{GOLD_DATABASE}`.{table_name}"
+    table_path = f"{GOLD_WAREHOUSE_PATH}{table_name}/"
     (
         df.writeTo(table_identifier)
         .using("iceberg")
+        .tableProperty("location", table_path)
         .tableProperty("format-version", "2")
         .tableProperty("write.format.default", "parquet")
         .createOrReplace()
