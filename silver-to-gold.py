@@ -5,9 +5,8 @@ from awsglue.job import Job
 from awsglue.utils import getResolvedOptions
 from pyspark.context import SparkContext
 from pyspark.sql import functions as F
-from pyspark.sql.window import Window
 
-# Paths for call-out later
+
 SILVER_PASSED_PATH = "s3://cheska-s3-medallion/silver/passed/"
 GOLD_WAREHOUSE_PATH = "s3://cheska-s3-medallion/gold/"
 GOLD_DATABASE = "gold-cheska-glue-training"
@@ -32,10 +31,11 @@ def configure_iceberg(spark):
         GOLD_WAREHOUSE_PATH,
     )
 
+
 def read_silver(spark):
     return spark.read.parquet(SILVER_PASSED_PATH)
 
-# Normalization of the data in the silver layer to prepare for gold layer processing
+
 def normalize_silver(silver_df):
     return silver_df.select(
         F.trim(F.col("order_id")).cast("string").alias("order_id"),
@@ -60,12 +60,8 @@ def normalize_silver(silver_df):
         F.col("payment_value").cast("decimal(18,2)").alias("payment_value"),
     )
 
-# Creation of dim_orders table
-def build_dim_orders(normalized_df):
-    order_window = Window.partitionBy("order_id").orderBy(
-        F.col("payment_sequential").asc_nulls_last()
-    )
 
+def build_dim_orders(normalized_df):
     return normalized_df.select(
         "order_id",
         "order_status",
@@ -75,13 +71,9 @@ def build_dim_orders(normalized_df):
         "order_delivered_carrier_date",
         "order_delivered_customer_date",
         "order_estimated_delivery_date",
-        "payment_sequential",
-    ).withColumn("order_row_number", F.row_number().over(order_window)) \
-        .where(F.col("order_row_number") == 1) \
-        .drop("order_row_number", "payment_sequential")
+    )
 
 
-# Creation of the dim_orders table
 def build_dim_date(dim_orders_df):
     purchase_dates = dim_orders_df.select(
         F.to_date("order_purchase_timestamp").alias("calendar_date")
@@ -94,7 +86,7 @@ def build_dim_date(dim_orders_df):
         F.year("calendar_date").cast("int").alias("year"),
     )
 
-# Creation of the fact_orders table
+
 def build_fact_orders(normalized_df):
     return normalized_df.select(
         "order_id",
@@ -112,24 +104,24 @@ def build_fact_orders(normalized_df):
                 F.col("order_delivered_customer_date")
                 > F.col("order_estimated_delivery_date")
             ),
-            F.lit(1),
-        ).otherwise(F.lit(0)).cast("int").alias("is_late_delivery"),
+            F.lit(True),
+        ).otherwise(F.lit(False)).alias("is_late_delivery"),
     )
 
-# Save / write to Iceberg tables in the gold layer
+
 def write_iceberg(df, table_name):
     table_identifier = f"{ICEBERG_CATALOG}.`{GOLD_DATABASE}`.{table_name}"
-    table_path = f"{GOLD_WAREHOUSE_PATH}{table_name}/"
+    table_location = f"{GOLD_WAREHOUSE_PATH}{table_name}/"
     (
         df.writeTo(table_identifier)
         .using("iceberg")
-        .tableProperty("location", table_path)
+        .tableProperty("location", table_location)
         .tableProperty("format-version", "2")
         .tableProperty("write.format.default", "parquet")
-        .createOrReplace()
+        .create()
     )
 
-# Main execution flow
+
 def main():
     args = getResolvedOptions(sys.argv, ["JOB_NAME"])
     spark_context = SparkContext()
