@@ -93,6 +93,10 @@ def main():
         orders_dyf = read_datacatalog(glueContext, db_name, orders_table)
         payments_dyf = read_datacatalog(glueContext, db_name, payments_table)
 
+        ### DEBUG PRINT FOR CLOUDWATCH TRACKING -- PRE DQDL
+        print(f"DEBUG: Raw Orders Count = {orders_dyf.count()}")
+        print(f"DEBUG: Raw Payments Count = {payments_dyf.count()}")
+
         # call the dqdl ruleset function on the orders dataset
         passed_orders_df, quarantine_orders_df = evaluate_and_split_dqdl(
             glueContext, orders_dyf, "orders_dqdl_ruleset"
@@ -102,7 +106,17 @@ def main():
         passed_payments_df, quarantine_payments_df = evaluate_and_split_dqdl(
             glueContext, payments_dyf, "payments_dqdl_ruleset"
         )
-        
+
+        ### DEBUG PRINT FOR CLOUDWATCH TRACKING -- POST DQDL
+        print(f"DEBUG: Passed Orders Count = {passed_orders_df.count()}")
+        print(f"DEBUG: Quarantined Orders Count = {quarantine_orders_df.count()}")
+
+        ### DEBUG PRINT FOR CLOUDWATCH TRACKING
+        print(f"DEBUG: Passed Orders Count = {passed_orders_df.count()}")
+        print(f"DEBUG: Quarantined Orders Count = {quarantine_orders_df.count()}")
+        print(f"DEBUG: Passed Payments Count = {passed_payments_df.count()}")
+        print(f"DEBUG: Quarantined Payments Count = {quarantine_payments_df.count()}")
+
         write_to_silver_s3(quarantine_orders_df, silver_quarantine_orders_path)
         write_to_silver_s3(quarantine_payments_df, silver_quarantine_payments_path)
         
@@ -112,6 +126,9 @@ def main():
 
         # Perform inner join
         join_pass_df = passed_orders_df.join(passed_payments_df, on="order_id", how="inner")
+
+        ### DEBUG PRINT FOR CLOUDWATCH TRACKING
+        print(f"DEBUG: Joined Passed Count = {join_pass_df.count()}")
         
         write_to_silver_s3(join_pass_df, silver_passed_path)
         
