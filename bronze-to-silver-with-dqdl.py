@@ -26,7 +26,10 @@ def get_catalog_ruleset(ruleset_name):
     try:
         glue_client = boto3.client('glue')
         response = glue_client.get_data_quality_ruleset(Name=ruleset_name)
-        return response['Ruleset']  # Returns raw DQDL string
+        ruleset = response.get('Ruleset')
+        if not ruleset:
+            raise ValueError(f"Data Catalog ruleset '{ruleset_name}' is empty")
+        return ruleset
     except Exception as e:
         print(f"Error retrieving ruleset '{ruleset_name}' from Data Catalog: {e}")
         raise e
@@ -57,8 +60,8 @@ def evaluate_and_split_dqdl(glueContext, dynamic_frame, ruleset_name):
         dq_cols = ["DataQualityEvaluationResult", "DataQualityRulesPass", "DataQualityRulesFail", "DataQualityRulesSkip"]
         cols_to_drop = [c for c in dq_cols if c in df.columns]
         
-        passed_df = df.filter(df["DataQualityEvaluationResult"] == "PASSED").drop(*cols_to_drop)
-        quarantine_df = df.filter(df["DataQualityEvaluationResult"] == "FAILED").drop(*cols_to_drop)
+        passed_df = df.filter(df["DataQualityEvaluationResult"] == "Passed").drop(*cols_to_drop)
+        quarantine_df = df.filter(df["DataQualityEvaluationResult"] == "Failed").drop(*cols_to_drop)
         
         return passed_df, quarantine_df
     except Exception as e:
