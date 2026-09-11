@@ -96,22 +96,18 @@ def main():
         ### DEBUG PRINT FOR CLOUDWATCH TRACKING -- PRE DQDL
         print(f"DEBUG: Raw Orders Count = {orders_dyf.count()}")
         print(f"DEBUG: Raw Payments Count = {payments_dyf.count()}")
-
+    
         # call the dqdl ruleset function on the orders dataset
         passed_orders_df, quarantine_orders_df = evaluate_and_split_dqdl(
-            glueContext, orders_dyf, "orders_dqdl_ruleset"
+            glueContext, orders_dyf, "orders_dqdl"
         )
 
         # call the dqdl ruleset function on the payments dataset
         passed_payments_df, quarantine_payments_df = evaluate_and_split_dqdl(
-            glueContext, payments_dyf, "payments_dqdl_ruleset"
+            glueContext, payments_dyf, "payments_dqdl"
         )
 
         ### DEBUG PRINT FOR CLOUDWATCH TRACKING -- POST DQDL
-        print(f"DEBUG: Passed Orders Count = {passed_orders_df.count()}")
-        print(f"DEBUG: Quarantined Orders Count = {quarantine_orders_df.count()}")
-
-        ### DEBUG PRINT FOR CLOUDWATCH TRACKING
         print(f"DEBUG: Passed Orders Count = {passed_orders_df.count()}")
         print(f"DEBUG: Quarantined Orders Count = {quarantine_orders_df.count()}")
         print(f"DEBUG: Passed Payments Count = {passed_payments_df.count()}")
