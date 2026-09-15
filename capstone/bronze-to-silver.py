@@ -94,23 +94,33 @@ def configure_iceberg(spark):
         SILVER_WAREHOUSE_PATH,
     )
 
-# Replace null values in columns that allow nulls with default values for better data quality
-def replace_null_values(events_df):
-    return events_df.select(
-        *[
-            F.coalesce(F.col("category_code"), F.lit("unknown category code")).alias(
-                "category_code"
-            )
-            if column_name == "category_code"
-            else F.coalesce(F.col("brand"), F.lit("unknown brand")).alias("brand")
-            if column_name == "brand"
-            else F.coalesce(F.col("user_session"), F.lit("unknown session")).alias(
-                "user_session"
-            )
-            if column_name == "user_session"
-            else F.col(column_name)
-            for column_name in events_df.columns
-        ]
+# Replace null or whitespace-only values and trim string columns.
+def normalize_events(events_df):
+    return (
+        events_df
+        .withColumn(
+            "category_code",
+            F.coalesce(
+                F.nullif(F.trim(F.col("category_code")), F.lit("")),
+                F.lit("unknown category code"),
+            ),
+        )
+        .withColumn(
+            "brand",
+            F.coalesce(
+                F.nullif(F.trim(F.col("brand")), F.lit("")),
+                F.lit("unknown brand"),
+            ),
+        )
+        .withColumn(
+            "user_session",
+            F.coalesce(
+                F.nullif(F.trim(F.col("user_session")), F.lit("")),
+                F.lit("unknown session"),
+            ),
+        )
+        .withColumn("event_type", F.trim(F.col("event_type")))
+        .withColumn("event_time", F.to_timestamp("event_time"))
     )
 
 # Write the DataFrame to an Iceberg table
@@ -120,29 +130,40 @@ def write_to_iceberg(spark, events_df, table_name, warehouse_path):
     source_view = f"{table_name}_source"
 
     events_df.createOrReplaceTempView(source_view)
-    table_exists = spark.catalog.tableExists(
-        table_identifier
-    )
+    table_exists = spark.catalog.tableExists(table_identifier)
 
-    if table_exists:
-        spark.sql(
-            f"INSERT INTO {table_identifier} "
-            f"SELECT * FROM {source_view}"
-        )
-    else:
-        spark.sql(
-            f"""
-            CREATE TABLE {table_identifier}
+    if not table_exists:
+        spark.sql(f"""
+            CREATE TABLE IF NOT EXISTS {table_identifier} (
+                event_time TIMESTAMP,
+                event_type STRING,
+                product_id BIGINT,
+                category_id BIGINT,
+                category_code STRING,
+                brand STRING,
+                price DOUBLE,
+                user_id BIGINT,
+                user_session STRING
+            )
             USING iceberg
             PARTITIONED BY (years(event_time), months(event_time))
             LOCATION '{table_location}'
             TBLPROPERTIES (
                 'format-version' = '2',
-                'write.format.default' = 'parquet'
+                'write.format.default' = 'parquet',
+                'write.spark.fanout.enabled' = 'true'
             )
-            AS SELECT * FROM {source_view}
-            """
+        """)
+    spark.sql(f"""
+        INSERT INTO {table_identifier} (
+            event_time, event_type, product_id, category_id,
+            category_code, brand, price, user_id, user_session
         )
+        SELECT 
+            event_time, event_type, product_id, category_id,
+            category_code, brand, price, user_id, user_session
+        FROM {source_view}
+    """)
 
 # Main function for the execution flow of the Glue job
 def main():
@@ -170,12 +191,8 @@ def main():
         print(f"DEBUG: Passed Events Count = {passed_events_df.count()}")
         print(f"DEBUG: Quarantined Events Count = {quarantine_events_df.count()}")
 
-        clean_events_df = replace_null_values(passed_events_df).withColumn(
-            "event_time", F.to_timestamp("event_time")
-        )
-        quarantine_events_df = quarantine_events_df.withColumn(
-            "event_time", F.to_timestamp("event_time")
-        )
+        clean_events_df = normalize_events(passed_events_df)
+        quarantine_events_df = normalize_events(quarantine_events_df)
         write_to_iceberg(
             spark, clean_events_df, "silver_events", SILVER_WAREHOUSE_PATH
         )
