@@ -13,6 +13,7 @@ BRONZE_TABLE = "bronze"
 DQDL_RULESET = "capstone-dqdl-ruleset"
 SILVER_DATABASE = "silver-cheska-capstone-db"
 SILVER_WAREHOUSE_PATH = "s3://cheska-s3-capstone/silver/"
+WAREHOUSE_BASE_PATH = "s3://cheska-s3-capstone/"
 QUARANTINE_WAREHOUSE_PATH = "s3://cheska-s3-capstone/quarantine/"
 ICEBERG_CATALOG = "glue_catalog"
 
@@ -91,7 +92,7 @@ def configure_iceberg(spark):
     )
     spark.conf.set(
         f"spark.sql.catalog.{ICEBERG_CATALOG}.warehouse",
-        SILVER_WAREHOUSE_PATH,
+        WAREHOUSE_BASE_PATH,
     )
 
 # Replace null or whitespace-only values and trim string columns.
@@ -220,12 +221,8 @@ def main():
         print(f"DEBUG: Quarantined Events Count = {quarantined_df.count()}")
 
         # Clean and prepare data
-        clean_events_df = normalize_events(passed_df).withColumn(
-            "event_time", F.to_timestamp("event_time")
-        )
-        quarantine_events_df = normalize_events(quarantined_df).withColumn(
-            "event_time", F.to_timestamp("event_time")
-        )
+        clean_events_df = normalize_events(passed_df)
+        quarantine_events_df = normalize_events(quarantined_df)
 
         # Write to Iceberg tables
         write_to_iceberg(spark, clean_events_df, "passed")
