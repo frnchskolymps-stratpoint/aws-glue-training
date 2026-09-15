@@ -123,6 +123,7 @@ def normalize_events(events_df):
         .withColumn("event_time", F.to_timestamp("event_time"))
     )
 
+# Creation of the Iceberg schema table
 def create_tables_if_not_exists(spark):
     # Silver Table
     spark.sql(f"""
@@ -170,7 +171,7 @@ def create_tables_if_not_exists(spark):
         )
     """)
 
-# Write the DataFrame to an Iceberg table
+# Writing the data to the created iceberg table
 def write_to_iceberg(spark, events_df, table_name):
     table_identifier = f"{ICEBERG_CATALOG}.`{SILVER_DATABASE}`.`{table_name}`"
     source_view = f"{table_name}_source"
@@ -208,21 +209,21 @@ def main():
         events_dyf = read_datacatalog(glue_context, BRONZE_DATABASE, BRONZE_TABLE)
 
         # Run DQDL split
-        passed_events_df, quarantine_events_df = evaluate_and_split_dqdl(
+        passed_df, quarantined_df = evaluate_and_split_dqdl(
             glue_context, events_dyf, DQDL_RULESET
         )
 
-        passed_events_df.cache()
-        quarantine_events_df.cache()
+        passed_df.cache()
+        quarantined_df.cache()
 
-        print(f"DEBUG: Passed Events Count = {passed_events_df.count()}")
-        print(f"DEBUG: Quarantined Events Count = {quarantine_events_df.count()}")
+        print(f"DEBUG: Passed Events Count = {passed_df.count()}")
+        print(f"DEBUG: Quarantined Events Count = {quarantined_df.count()}")
 
         # Clean and prepare data
-        clean_events_df = normalize_events(passed_events_df).withColumn(
+        clean_events_df = normalize_events(passed_df).withColumn(
             "event_time", F.to_timestamp("event_time")
         )
-        quarantine_events_df = quarantine_events_df.withColumn(
+        quarantine_events_df = normalize_events(quarantined_df).withColumn(
             "event_time", F.to_timestamp("event_time")
         )
 
