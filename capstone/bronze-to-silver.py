@@ -140,7 +140,7 @@ def create_tables_if_not_exists(spark):
         )
         USING iceberg
         PARTITIONED BY (months(event_time))
-        LOCATION '{SILVER_WAREHOUSE_PATH}silver/'
+        LOCATION '{SILVER_WAREHOUSE_PATH}passed/'
         TBLPROPERTIES (
             'format-version' = '2',
             'write.format.default' = 'parquet',
@@ -228,7 +228,7 @@ def main():
         )
 
         # Write to Iceberg tables
-        write_to_iceberg(spark, clean_events_df, "silver")
+        write_to_iceberg(spark, clean_events_df, "passed")
         write_to_iceberg(spark, quarantine_events_df, "quarantined")
 
         job.commit()
