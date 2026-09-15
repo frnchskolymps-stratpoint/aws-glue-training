@@ -115,23 +115,34 @@ def replace_null_values(events_df):
 
 # Write the DataFrame to an Iceberg table
 def write_to_iceberg(spark, events_df, table_name, warehouse_path):
-    table_identifier = f"{ICEBERG_CATALOG}.`{SILVER_DATABASE}`.{table_name}"
+    table_identifier = f"{ICEBERG_CATALOG}.`{SILVER_DATABASE}`.`{table_name}`"
     table_location = f"{warehouse_path}{table_name}/"
-    
+    source_view = f"{table_name}_source"
+
+    events_df.createOrReplaceTempView(source_view)
     table_exists = spark.catalog.tableExists(
-        f"`{ICEBERG_CATALOG}`.`{SILVER_DATABASE}`.`{table_name}`"
+        table_identifier
     )
 
     if table_exists:
-        events_df.writeTo(table_identifier).append()
+        spark.sql(
+            f"INSERT INTO {table_identifier} "
+            f"SELECT * FROM {source_view}"
+        )
     else:
-        events_df.writeTo(table_identifier) \
-            .using("iceberg") \
-            .tableProperty("location", table_location) \
-            .tableProperty("format-version", "2") \
-            .tableProperty("write.format.default", "parquet") \
-            .partitionedBy(F.expr("years(event_time)"), F.expr("months(event_time)")) \
-            .create()
+        spark.sql(
+            f"""
+            CREATE TABLE {table_identifier}
+            USING iceberg
+            PARTITIONED BY (years(event_time), months(event_time))
+            LOCATION '{table_location}'
+            TBLPROPERTIES (
+                'format-version' = '2',
+                'write.format.default' = 'parquet'
+            )
+            AS SELECT * FROM {source_view}
+            """
+        )
 
 # Main function for the execution flow of the Glue job
 def main():
