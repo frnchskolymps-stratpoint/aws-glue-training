@@ -126,7 +126,7 @@ def normalize_events(events_df):
 def create_tables_if_not_exists(spark):
     # Silver Table
     spark.sql(f"""
-        CREATE TABLE IF NOT EXISTS {ICEBERG_CATALOG}.`{SILVER_DATABASE}`.silver (
+        CREATE TABLE IF NOT EXISTS {ICEBERG_CATALOG}.`{SILVER_DATABASE}`.passed (
             event_time TIMESTAMP,
             event_type STRING,
             product_id BIGINT,
