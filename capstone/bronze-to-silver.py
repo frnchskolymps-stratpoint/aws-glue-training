@@ -117,18 +117,21 @@ def replace_null_values(events_df):
 def write_to_iceberg(spark, events_df, table_name, warehouse_path):
     table_identifier = f"{ICEBERG_CATALOG}.`{SILVER_DATABASE}`.{table_name}"
     table_location = f"{warehouse_path}{table_name}/"
-    writer = (
-        events_df.writeTo(table_identifier)
-        .using("iceberg")
-        .tableProperty("location", table_location)
-        .tableProperty("format-version", "2")
-        .tableProperty("write.format.default", "parquet")
+    
+    table_exists = spark.catalog.tableExists(
+        f"`{ICEBERG_CATALOG}`.`{SILVER_DATABASE}`.`{table_name}`"
     )
 
-    if spark.catalog.tableExists(table_identifier):
+    if table_exists:
         events_df.writeTo(table_identifier).append()
     else:
-       writer.partitionedBy("year(event_time)", "month(event_time)").create() # partition the data
+        events_df.writeTo(table_identifier) \
+            .using("iceberg") \
+            .tableProperty("location", table_location) \
+            .tableProperty("format-version", "2") \
+            .tableProperty("write.format.default", "parquet") \
+            .partitionedBy(F.expr("years(event_time)"), F.expr("months(event_time)")) \
+            .create()
 
 # Main function for the execution flow of the Glue job
 def main():
