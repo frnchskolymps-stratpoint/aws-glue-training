@@ -126,7 +126,7 @@ def normalize_events(events_df):
 def create_tables_if_not_exists(spark):
     # Silver Table
     spark.sql(f"""
-        CREATE TABLE IF NOT EXISTS {ICEBERG_CATALOG}.`{SILVER_DATABASE}`.silver_events (
+        CREATE TABLE IF NOT EXISTS {ICEBERG_CATALOG}.`{SILVER_DATABASE}`.silver (
             event_time TIMESTAMP,
             event_type STRING,
             product_id BIGINT,
@@ -139,7 +139,7 @@ def create_tables_if_not_exists(spark):
         )
         USING iceberg
         PARTITIONED BY (months(event_time))
-        LOCATION '{SILVER_WAREHOUSE_PATH}silver_events/'
+        LOCATION '{SILVER_WAREHOUSE_PATH}silver/'
         TBLPROPERTIES (
             'format-version' = '2',
             'write.format.default' = 'parquet',
@@ -149,7 +149,7 @@ def create_tables_if_not_exists(spark):
 
     # Quarantine Table
     spark.sql(f"""
-        CREATE TABLE IF NOT EXISTS {ICEBERG_CATALOG}.`{SILVER_DATABASE}`.quarantine_events (
+        CREATE TABLE IF NOT EXISTS {ICEBERG_CATALOG}.`{SILVER_DATABASE}`.quarantined (
             event_time TIMESTAMP,
             event_type STRING,
             product_id BIGINT,
@@ -162,7 +162,7 @@ def create_tables_if_not_exists(spark):
         )
         USING iceberg
         PARTITIONED BY (months(event_time))
-        LOCATION '{QUARANTINE_WAREHOUSE_PATH}quarantine_events/'
+        LOCATION '{QUARANTINE_WAREHOUSE_PATH}quarantined/'
         TBLPROPERTIES (
             'format-version' = '2',
             'write.format.default' = 'parquet',
@@ -227,8 +227,8 @@ def main():
         )
 
         # Write to Iceberg tables
-        write_to_iceberg(spark, clean_events_df, "silver_events")
-        write_to_iceberg(spark, quarantine_events_df, "quarantine_events")
+        write_to_iceberg(spark, clean_events_df, "silver")
+        write_to_iceberg(spark, quarantine_events_df, "quarantined")
 
         job.commit()
         print("job completed successfully")
