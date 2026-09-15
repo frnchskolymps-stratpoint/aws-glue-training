@@ -123,37 +123,60 @@ def normalize_events(events_df):
         .withColumn("event_time", F.to_timestamp("event_time"))
     )
 
+def create_tables_if_not_exists(spark):
+    # Silver Table
+    spark.sql(f"""
+        CREATE TABLE IF NOT EXISTS {ICEBERG_CATALOG}.`{SILVER_DATABASE}`.silver_events (
+            event_time TIMESTAMP,
+            event_type STRING,
+            product_id BIGINT,
+            category_id BIGINT,
+            category_code STRING,
+            brand STRING,
+            price DOUBLE,
+            user_id BIGINT,
+            user_session STRING
+        )
+        USING iceberg
+        PARTITIONED BY (months(event_time))
+        LOCATION '{SILVER_WAREHOUSE_PATH}silver_events/'
+        TBLPROPERTIES (
+            'format-version' = '2',
+            'write.format.default' = 'parquet',
+            'write.spark.fanout.enabled' = 'true'
+        )
+    """)
+
+    # Quarantine Table
+    spark.sql(f"""
+        CREATE TABLE IF NOT EXISTS {ICEBERG_CATALOG}.`{SILVER_DATABASE}`.quarantine_events (
+            event_time TIMESTAMP,
+            event_type STRING,
+            product_id BIGINT,
+            category_id BIGINT,
+            category_code STRING,
+            brand STRING,
+            price DOUBLE,
+            user_id BIGINT,
+            user_session STRING
+        )
+        USING iceberg
+        PARTITIONED BY (months(event_time))
+        LOCATION '{QUARANTINE_WAREHOUSE_PATH}quarantine_events/'
+        TBLPROPERTIES (
+            'format-version' = '2',
+            'write.format.default' = 'parquet',
+            'write.spark.fanout.enabled' = 'true'
+        )
+    """)
+
 # Write the DataFrame to an Iceberg table
-def write_to_iceberg(spark, events_df, table_name, warehouse_path):
+def write_to_iceberg(spark, events_df, table_name):
     table_identifier = f"{ICEBERG_CATALOG}.`{SILVER_DATABASE}`.`{table_name}`"
-    table_location = f"{warehouse_path}{table_name}/"
     source_view = f"{table_name}_source"
 
     events_df.createOrReplaceTempView(source_view)
-    table_exists = spark.catalog.tableExists(table_identifier)
 
-    if not table_exists:
-        spark.sql(f"""
-            CREATE TABLE IF NOT EXISTS {table_identifier} (
-                event_time TIMESTAMP,
-                event_type STRING,
-                product_id BIGINT,
-                category_id BIGINT,
-                category_code STRING,
-                brand STRING,
-                price DOUBLE,
-                user_id BIGINT,
-                user_session STRING
-            )
-            USING iceberg
-            PARTITIONED BY (years(event_time), months(event_time))
-            LOCATION '{table_location}'
-            TBLPROPERTIES (
-                'format-version' = '2',
-                'write.format.default' = 'parquet',
-                'write.spark.fanout.enabled' = 'true'
-            )
-        """)
     spark.sql(f"""
         INSERT INTO {table_identifier} (
             event_time, event_type, product_id, category_id,
@@ -176,32 +199,36 @@ def main():
 
     try:
         configure_iceberg(spark)
-        spark.sql(
-            f"CREATE DATABASE IF NOT EXISTS {ICEBERG_CATALOG}.`{SILVER_DATABASE}`"
-        )
+        spark.sql(f"CREATE DATABASE IF NOT EXISTS {ICEBERG_CATALOG}.`{SILVER_DATABASE}`")
 
-        events_dyf = read_datacatalog(
-            glue_context, BRONZE_DATABASE, BRONZE_TABLE
-        )
-        print(f"DEBUG: Raw Events Count = {events_dyf.count()}")
+        # Initialize Iceberg tables cleanly before processing
+        create_tables_if_not_exists(spark)
 
+        # Ingest from Data Catalog
+        events_dyf = read_datacatalog(glue_context, BRONZE_DATABASE, BRONZE_TABLE)
+
+        # Run DQDL split
         passed_events_df, quarantine_events_df = evaluate_and_split_dqdl(
             glue_context, events_dyf, DQDL_RULESET
         )
+
+        passed_events_df.cache()
+        quarantine_events_df.cache()
+
         print(f"DEBUG: Passed Events Count = {passed_events_df.count()}")
         print(f"DEBUG: Quarantined Events Count = {quarantine_events_df.count()}")
 
-        clean_events_df = normalize_events(passed_events_df)
-        quarantine_events_df = normalize_events(quarantine_events_df)
-        write_to_iceberg(
-            spark, clean_events_df, "silver_events", SILVER_WAREHOUSE_PATH
+        # Clean and prepare data
+        clean_events_df = normalize_events(passed_events_df).withColumn(
+            "event_time", F.to_timestamp("event_time")
         )
-        write_to_iceberg(
-            spark,
-            quarantine_events_df,
-            "quarantine_events",
-            QUARANTINE_WAREHOUSE_PATH,
+        quarantine_events_df = quarantine_events_df.withColumn(
+            "event_time", F.to_timestamp("event_time")
         )
+
+        # Write to Iceberg tables
+        write_to_iceberg(spark, clean_events_df, "silver_events")
+        write_to_iceberg(spark, quarantine_events_df, "quarantine_events")
 
         job.commit()
         print("job completed successfully")
