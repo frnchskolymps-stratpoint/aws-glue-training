@@ -221,11 +221,30 @@ def main():
         print(f"DEBUG: Quarantined Events Count = {quarantined_df.count()}")
 
         # Clean and prepare data
-        clean_events_df = normalize_events(passed_df)
+        passed_events_df = normalize_events(passed_df)
         quarantine_events_df = normalize_events(quarantined_df)
 
+        # FOR DEBUGGING: counting nulls before normalization
+        null_category_before = passed_df.filter(F.col("category_code").isNull() | (F.trim(F.col("category_code")) == "")).count()
+        null_brand_before = passed_df.filter(F.col("brand").isNull() | (F.trim(F.col("brand")) == "")).count()
+        null_session_before = passed_df.filter(F.col("user_session").isNull() | (F.trim(F.col("user_session")) == "")).count()
+
+        # FOR DEBUGGING: counting nulls after normalization
+        null_category_after = passed_events_df.filter(F.col("category_code").isNull()).count()
+        null_brand_after = passed_events_df.filter(F.col("brand").isNull()).count()
+        null_session_after = passed_events_df.filter(F.col("user_session").isNull()).count()
+
+        # FOR DEBUGGING: counting the replaced values during normalization
+        unknown_category_count = passed_events_df.filter(F.col("category_code") == "unknown category code").count()
+        unknown_brand_count = passed_events_df.filter(F.col("brand") == "unknown brand").count()
+        unknown_session_count = passed_events_df.filter(F.col("user_session") == "unknown session").count()
+
+        print(f"DEBUG: null category_code = {null_category_before} | Replaced null category_code = {unknown_category_count} | Remaining NULLs = {null_category_after}")
+        print(f"DEBUG: null brand = {null_brand_before} | Replaced null brand = {unknown_brand_count} | Remaining NULLs = {null_brand_after}")
+        print(f"DEBUG: null user_session = {null_session_before} | Replaced null user_session = {unknown_session_count} | Remaining NULLs = {null_session_after}")
+
         # Write to Iceberg tables
-        write_to_iceberg(spark, clean_events_df, "passed")
+        write_to_iceberg(spark, passed_events_df, "passed")
         write_to_iceberg(spark, quarantine_events_df, "quarantined")
 
         job.commit()
