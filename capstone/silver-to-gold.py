@@ -75,7 +75,7 @@ def build_fact_events(silver_df):
         .withColumn("event_month", F.month(F.col("event_time")))
     )
 
-
+# Creation of fact_finance_data_quality table function & creation of total_records and valid_records columns
 def build_fact_finance_data_quality(fact_events_df):
     return (
         fact_events_df
