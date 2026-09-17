@@ -1,12 +1,11 @@
 import sys
-
 from awsglue.context import GlueContext
 from awsglue.job import Job
 from awsglue.utils import getResolvedOptions
 from pyspark.context import SparkContext
 from pyspark.sql import functions as F, Window
 
-
+# Paths and names for easier reference
 SILVER_DATABASE = "silver-cheska-capstone-db"
 SILVER_TABLE = "passed"
 GOLD_DATABASE = "gold-cheska-capstone-db"
@@ -51,9 +50,9 @@ def build_dim_product(silver_df):
         .dropDuplicates(["product_id"])
     )
 
-# Creation of the fact_events table function
+# Creation of the fact_events table function -- partitioned by event_year and event_month
 def build_fact_events(silver_df):
-    event_order = Window.orderBy(
+    event_order = Window.partitionBy("event_year", "event_month").orderBy(
         F.col("event_time").asc_nulls_last(),
         F.col("product_id").asc_nulls_last(),
         F.col("user_id").asc_nulls_last(),
@@ -107,8 +106,6 @@ def build_fact_finance_data_quality(fact_events_df):
 def write_iceberg(df, table_name, partition_cols=None):
     table_identifier = f"{ICEBERG_CATALOG}.`{GOLD_DATABASE}`.{table_name}"
     table_location = f"{GOLD_WAREHOUSE_PATH}{table_name}/"
-    print(f"DEBUG: Starting Iceberg table creation for {table_name} at {table_location}")
-    print(f"DEBUG: {table_name} row count before write = {df.count()}")
 
     writer = (
         df.writeTo(table_identifier)
@@ -122,8 +119,6 @@ def write_iceberg(df, table_name, partition_cols=None):
         writer = writer.partitionedBy(*partition_cols)
 
     writer.createOrReplace()
-    print(f"DEBUG: Finished Iceberg creation for {table_name} -> {table_identifier}")
-
 
 def main():
     args = getResolvedOptions(sys.argv, ["JOB_NAME"])
