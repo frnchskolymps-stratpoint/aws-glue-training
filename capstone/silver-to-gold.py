@@ -52,16 +52,9 @@ def build_dim_product(silver_df):
 
 # Creation of the fact_events table function -- partitioned by event_year and event_month
 def build_fact_events(silver_df):
-    event_order = Window.partitionBy("event_year", "event_month").orderBy(
-        F.col("event_time").asc_nulls_last(),
-        F.col("product_id").asc_nulls_last(),
-        F.col("user_id").asc_nulls_last(),
-    )
-
-    return (
+    events_df = (
         silver_df
         .select(
-            F.row_number().over(event_order).cast("long").alias("event_id"),
             F.col("event_time").alias("event_time"),
             F.col("event_type").alias("event_type"),
             F.col("product_id").cast("long").alias("product_id"),
@@ -72,6 +65,20 @@ def build_fact_events(silver_df):
         .where(F.col("event_time").isNotNull())
         .withColumn("event_year", F.year(F.col("event_time")))
         .withColumn("event_month", F.month(F.col("event_time")))
+    )
+
+    event_order = Window.partitionBy("event_year", "event_month").orderBy(
+        F.col("event_time").asc_nulls_last(),
+        F.col("product_id").asc_nulls_last(),
+        F.col("user_id").asc_nulls_last(),
+    )
+
+    return (
+        events_df
+        .withColumn(
+            "event_id",
+            F.row_number().over(event_order).cast("long").alias("event_id"),
+        )
     )
 
 # Creation of fact_finance_data_quality table function & creation of total_records and valid_records columns
@@ -102,10 +109,12 @@ def build_fact_finance_data_quality(fact_events_df):
         )
     )
 
-
 def write_iceberg(df, table_name, partition_cols=None):
     table_identifier = f"{ICEBERG_CATALOG}.`{GOLD_DATABASE}`.{table_name}"
     table_location = f"{GOLD_WAREHOUSE_PATH}{table_name}/"
+
+    if partition_cols:
+        df = df.repartition(*partition_cols)
 
     writer = (
         df.writeTo(table_identifier)
@@ -116,7 +125,7 @@ def write_iceberg(df, table_name, partition_cols=None):
     )
 
     if partition_cols:
-        writer = writer.partitionedBy(*partition_cols)
+        writer = writer.partitionedBy(*[F.col(column) for column in partition_cols])
 
     writer.createOrReplace()
 
@@ -134,7 +143,8 @@ def main():
         spark.sql(f"CREATE DATABASE IF NOT EXISTS {ICEBERG_CATALOG}.`{GOLD_DATABASE}`")
         print(f"DEBUG: Database created/verified = {ICEBERG_CATALOG}.{GOLD_DATABASE}")
 
-        silver_df = read_silver(spark)
+        # Cache the silver dataframe to avoid multiple reads from S3
+        silver_df = read_silver(spark).cache()
 
         dim_product_df = build_dim_product(silver_df)
         fact_events_df = build_fact_events(silver_df)
