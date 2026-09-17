@@ -37,6 +37,7 @@ def read_silver(spark):
     return spark.table(silver_table)
 
 # Creation of the dim_product table function
+# Dropping duplicates in product to avoid duplicate product_id values in the dimension table
 def build_dim_product(silver_df):
     return (
         silver_df
@@ -155,20 +156,15 @@ def main():
         print(f"DEBUG: fact_events rows = {fact_events_df.count()}")
         print(f"DEBUG: fact_finance_data_quality rows = {fact_finance_df.count()}")
 
-        print("DEBUG: Starting creation of dim_product Iceberg table")
         write_iceberg(dim_product_df, "dim_product")
         print("DEBUG: dim_product table creation complete")
 
-        print("DEBUG: Starting creation of fact_events Iceberg table with year/month partitioning")
         write_iceberg(fact_events_df, "fact_events", ["event_year", "event_month"])
         print("DEBUG: fact_events table creation complete")
 
-        print("DEBUG: Starting creation of fact_finance_data_quality Iceberg table with year/month partitioning")
         write_iceberg(fact_finance_df, "fact_finance_data_quality", ["audit_year", "audit_month"])
         print("DEBUG: fact_finance_data_quality table creation complete")
-
-        print(f"DEBUG: Final Iceberg gold setup complete for {ICEBERG_CATALOG}.{GOLD_DATABASE}")
-
+        
         job.commit()
         print("job completed successfully")
     except Exception as error:
