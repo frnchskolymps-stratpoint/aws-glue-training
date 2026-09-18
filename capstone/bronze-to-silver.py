@@ -12,9 +12,9 @@ BRONZE_DATABASE = "bronze-cheska-capstone-db"
 BRONZE_TABLE = "bronze"
 DQDL_RULESET = "capstone-dqdl-ruleset"
 SILVER_DATABASE = "silver-cheska-capstone-db"
-SILVER_WAREHOUSE_PATH = "s3://cheska-s3-capstone/silver/"
+SILVER_WAREHOUSE_PATH = "s3://cheska-s3-capstone/02_silver/"
 WAREHOUSE_BASE_PATH = "s3://cheska-s3-capstone/"
-QUARANTINE_WAREHOUSE_PATH = "s3://cheska-s3-capstone/quarantine/"
+QUARANTINE_WAREHOUSE_PATH = "s3://cheska-s3-capstone/04_quarantine/"
 ICEBERG_CATALOG = "glue_catalog"
 
 # Reading from the Data Catalog using GlueContext
@@ -92,7 +92,7 @@ def configure_iceberg(spark):
     )
     spark.conf.set(
         f"spark.sql.catalog.{ICEBERG_CATALOG}.warehouse",
-        WAREHOUSE_BASE_PATH,
+        SILVER_WAREHOUSE_PATH,
     )
 
 # Replace null or whitespace-only values and trim string columns.

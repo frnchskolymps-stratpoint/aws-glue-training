@@ -9,7 +9,7 @@ from pyspark.sql import functions as F, Window
 SILVER_DATABASE = "silver-cheska-capstone-db"
 SILVER_TABLE = "passed"
 GOLD_DATABASE = "gold-cheska-capstone-db"
-GOLD_WAREHOUSE_PATH = "s3://cheska-s3-capstone/gold/"
+GOLD_WAREHOUSE_PATH = "s3://cheska-s3-capstone/03_gold/"
 ICEBERG_CATALOG = "glue_catalog"
 
 #  Configuring iceberg 
@@ -130,6 +130,7 @@ def write_iceberg(df, table_name, partition_cols=None):
 
     writer.createOrReplace()
 
+# MAIN EXECUTION FLOW OF THE JOB SCRIPT
 def main():
     args = getResolvedOptions(sys.argv, ["JOB_NAME"])
     spark_context = SparkContext()
@@ -140,22 +141,23 @@ def main():
 
     try:
         configure_iceberg(spark)
-        print(f"DEBUG: Iceberg catalog configured. Warehouse = {GOLD_WAREHOUSE_PATH}")
         spark.sql(f"CREATE DATABASE IF NOT EXISTS {ICEBERG_CATALOG}.`{GOLD_DATABASE}`")
-        print(f"DEBUG: Database created/verified = {ICEBERG_CATALOG}.{GOLD_DATABASE}")
 
         # Cache the silver dataframe to avoid multiple reads from S3
         silver_df = read_silver(spark).cache()
 
+        # Calling the functions to build the dimension and fact tables
         dim_product_df = build_dim_product(silver_df)
         fact_events_df = build_fact_events(silver_df)
         fact_finance_df = build_fact_finance_data_quality(fact_events_df)
 
+        # Debug prints of counts for each dataframe -- to verify the number of rows before writing to Iceberg tables
         print(f"DEBUG: Silver rows = {silver_df.count()}")
         print(f"DEBUG: dim_product rows = {dim_product_df.count()}")
         print(f"DEBUG: fact_events rows = {fact_events_df.count()}")
         print(f"DEBUG: fact_finance_data_quality rows = {fact_finance_df.count()}")
 
+        # Writing the dataframes of dim_product, fact_events, and fact_finance_data_quality to their respective Iceberg tables
         write_iceberg(dim_product_df, "dim_product")
         print("DEBUG: dim_product table creation complete")
 
