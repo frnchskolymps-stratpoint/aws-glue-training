@@ -82,8 +82,8 @@ def build_fact_events(silver_df):
         )
     )
 
-# Creation of fact_finance_data_quality table function & creation of total_records and valid_records columns
-def build_fact_finance_data_quality(fact_events_df):
+# Creation of fact_finance_audit table function & creation of total_records and valid_records columns
+def build_fact_finance_audit(fact_events_df):
     return (
         fact_events_df
         .withColumn("audit_date", F.to_date(F.date_trunc("month", F.col("event_time"))))
@@ -149,23 +149,23 @@ def main():
         # Calling the functions to build the dimension and fact tables
         dim_product_df = build_dim_product(silver_df)
         fact_events_df = build_fact_events(silver_df)
-        fact_finance_df = build_fact_finance_data_quality(fact_events_df)
+        fact_finance_df = build_fact_finance_audit(fact_events_df)
 
         # Debug prints of counts for each dataframe -- to verify the number of rows before writing to Iceberg tables
         print(f"DEBUG: Silver rows = {silver_df.count()}")
         print(f"DEBUG: dim_product rows = {dim_product_df.count()}")
         print(f"DEBUG: fact_events rows = {fact_events_df.count()}")
-        print(f"DEBUG: fact_finance_data_quality rows = {fact_finance_df.count()}")
+        print(f"DEBUG: fact_finance_audit rows = {fact_finance_df.count()}")
 
-        # Writing the dataframes of dim_product, fact_events, and fact_finance_data_quality to their respective Iceberg tables
+        # Writing the dataframes of dim_product, fact_events, and fact_finance_audit to their respective Iceberg tables
         write_iceberg(dim_product_df, "dim_product")
         print("DEBUG: dim_product table creation complete")
 
         write_iceberg(fact_events_df, "fact_events", ["event_year", "event_month"])
         print("DEBUG: fact_events table creation complete")
 
-        write_iceberg(fact_finance_df, "fact_finance_data_quality", ["audit_year", "audit_month"])
-        print("DEBUG: fact_finance_data_quality table creation complete")
+        write_iceberg(fact_finance_df, "fact_finance_audit", ["audit_year", "audit_month"])
+        print("DEBUG: fact_finance_audit table creation complete")
         
         job.commit()
         print("job completed successfully")
