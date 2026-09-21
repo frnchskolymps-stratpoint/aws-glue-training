@@ -200,6 +200,9 @@ def main():
         configure_iceberg(spark)
         spark.sql(f"CREATE DATABASE IF NOT EXISTS {ICEBERG_CATALOG}.`{GOLD_DATABASE}`")
 
+        # Create gold tables and dictionary comments
+        create_gold_tables_if_not_exists(spark)
+
         # Cache the silver dataframe to avoid multiple reads from S3
         silver_df = read_silver(spark).cache()
 
