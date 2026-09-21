@@ -41,10 +41,10 @@ def create_gold_tables_if_not_exists(spark):
     spark.sql(
         f"""
         CREATE TABLE IF NOT EXISTS {ICEBERG_CATALOG}.`{GOLD_DATABASE}`.dim_product (
-            product_id BIGINT COMMENT 'Unique surrogate identifier for the product (Primary Key)',
-            category_id BIGINT COMMENT 'Unique identifier for the product category',
-            category_code STRING COMMENT 'Standardized product category taxonomy path',
-            brand STRING COMMENT 'Normalized brand name associated with the product'
+            product_id BIGINT COMMENT 'Unique identifier for the product (primary key)',
+            category_id BIGINT COMMENT 'Unique identifier for the category',
+            category_code STRING COMMENT 'The code of the category',
+            brand STRING COMMENT 'Brand name of the product associated with the category'
         )
         USING iceberg
         LOCATION '{GOLD_WAREHOUSE_PATH}dim_product/'
@@ -60,13 +60,13 @@ def create_gold_tables_if_not_exists(spark):
     spark.sql(
         f"""
         CREATE TABLE IF NOT EXISTS {ICEBERG_CATALOG}.`{GOLD_DATABASE}`.fact_events (
-            event_time TIMESTAMP COMMENT 'Timestamp of user interaction (UTC)',
-            event_type STRING COMMENT 'Categorized user action: view, cart, purchase, or remove_from_cart',
-            product_id BIGINT COMMENT 'Foreign key reference to dim_product.product_id',
-            user_id BIGINT COMMENT 'Unique user identifier for session attribution',
-            user_session STRING COMMENT 'Session UUID associated with the user event stream',
-            price DOUBLE COMMENT 'Item price in USD at the time of the event',
-            event_id BIGINT COMMENT 'Monotonically increasing event transaction sequence key'
+            event_time TIMESTAMP COMMENT 'The timestamp of the user interaction',
+            event_type STRING COMMENT 'Categorized user action',
+            product_id BIGINT COMMENT 'Foreign key reference to dim_product',
+            user_id BIGINT COMMENT 'Unique identifier for the user',
+            user_session STRING COMMENT 'Session of the user associated with the event',
+            price DOUBLE COMMENT 'Item price of the product',
+            event_id BIGINT COMMENT 'Event transaction identifier for the fact table'
         )
         USING iceberg
         PARTITIONED BY (months(event_time))
@@ -86,9 +86,9 @@ def create_gold_tables_if_not_exists(spark):
         CREATE TABLE IF NOT EXISTS {ICEBERG_CATALOG}.`{GOLD_DATABASE}`.fact_finance_audit (
             audit_date DATE COMMENT 'First day of the month representing the audit period',
             total_records BIGINT COMMENT 'Total record count processed for the month',
-            valid_records BIGINT COMMENT 'Count of records containing valid price metadata',
-            data_health_score DOUBLE COMMENT 'Percentage score of valid records relative to total records (0 to 100)',
-            monthly_revenue_audit DOUBLE COMMENT 'Sum of item prices representing monthly aggregated gross revenue'
+            valid_records BIGINT COMMENT 'Count of records containing valid price',
+            data_health_score DOUBLE COMMENT 'Percentage score of valid records relative to total records',
+            monthly_revenue_audit DOUBLE COMMENT 'Total monetary revenue sum computed across all valid events for the month'
         )
         USING iceberg
         PARTITIONED BY (months(audit_date))
