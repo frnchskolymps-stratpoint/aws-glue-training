@@ -51,7 +51,7 @@ def build_dim_product(silver_df):
         .dropDuplicates(["product_id"])
     )
 
-# Creation of the fact_events table function -- partitioned by event_year and event_month
+# Creation of the fact_events table function -- partitioned by year and month
 def build_fact_events(silver_df):
     events_df = (
         silver_df
@@ -64,11 +64,9 @@ def build_fact_events(silver_df):
             F.col("price").cast("double").alias("price"),
         )
         .where(F.col("event_time").isNotNull())
-        .withColumn("event_year", F.year(F.col("event_time")))
-        .withColumn("event_month", F.month(F.col("event_time")))
     )
 
-    event_order = Window.partitionBy("event_year", "event_month").orderBy(
+    event_order = Window.orderBy(
         F.col("event_time").asc_nulls_last(),
         F.col("product_id").asc_nulls_last(),
         F.col("user_id").asc_nulls_last(),
@@ -83,13 +81,11 @@ def build_fact_events(silver_df):
     )
 
 # Creation of fact_finance_audit table function & creation of total_records and valid_records columns
-def build_fact_finance_audit(fact_events_df):
+def build_fact_finance_audit(silver_df):
     return (
-        fact_events_df
+        silver_df
         .withColumn("audit_date", F.to_date(F.date_trunc("month", F.col("event_time"))))
-        .withColumn("audit_year", F.year(F.col("audit_date")))
-        .withColumn("audit_month", F.month(F.col("audit_date")))
-        .groupBy("audit_date", "audit_year", "audit_month")
+        .groupBy("audit_date")
         .agg(
             F.count("*").alias("total_records"),
             F.sum(F.when(F.col("price").isNotNull(), F.lit(1)).otherwise(F.lit(0))).alias("valid_records"),
@@ -101,8 +97,6 @@ def build_fact_finance_audit(fact_events_df):
         )
         .select(
             "audit_date",
-            "audit_year",
-            "audit_month",
             "total_records",
             "valid_records",
             "data_health_score",
@@ -110,12 +104,9 @@ def build_fact_finance_audit(fact_events_df):
         )
     )
 
-def write_iceberg(df, table_name, partition_cols=None):
+def write_iceberg(df, table_name, partition_exprs=None):
     table_identifier = f"{ICEBERG_CATALOG}.`{GOLD_DATABASE}`.{table_name}"
     table_location = f"{GOLD_WAREHOUSE_PATH}{table_name}/"
-
-    if partition_cols:
-        df = df.repartition(*partition_cols)
 
     writer = (
         df.writeTo(table_identifier)
@@ -125,8 +116,8 @@ def write_iceberg(df, table_name, partition_cols=None):
         .tableProperty("write.format.default", "parquet")
     )
 
-    if partition_cols:
-        writer = writer.partitionedBy(*[F.col(column) for column in partition_cols])
+    if partition_exprs:
+        writer = writer.partitionedBy(*partition_exprs)
 
     writer.createOrReplace()
 
@@ -149,7 +140,7 @@ def main():
         # Calling the functions to build the dimension and fact tables
         dim_product_df = build_dim_product(silver_df)
         fact_events_df = build_fact_events(silver_df)
-        fact_finance_df = build_fact_finance_audit(fact_events_df)
+        fact_finance_df = build_fact_finance_audit(silver_df)
 
         # Debug prints of counts for each dataframe -- to verify the number of rows before writing to Iceberg tables
         print(f"DEBUG: Silver rows = {silver_df.count()}")
@@ -161,10 +152,10 @@ def main():
         write_iceberg(dim_product_df, "dim_product")
         print("DEBUG: dim_product table creation complete")
 
-        write_iceberg(fact_events_df, "fact_events", ["event_year", "event_month"])
+        write_iceberg(fact_events_df, "fact_events", [F.months("event_time")])
         print("DEBUG: fact_events table creation complete")
 
-        write_iceberg(fact_finance_df, "fact_finance_audit", ["audit_year", "audit_month"])
+        write_iceberg(fact_finance_df, "fact_finance_audit", [F.months("audit_date")])
         print("DEBUG: fact_finance_audit table creation complete")
         
         job.commit()

@@ -7,9 +7,9 @@ from awsglue.job import Job
 from awsgluedq.transforms import EvaluateDataQuality
 from pyspark.sql import functions as F
 
-
+# Paths and names for easier reference
 BRONZE_DATABASE = "bronze-cheska-capstone-db"
-BRONZE_TABLE = "bronze"
+BRONZE_TABLE = "01_bronze"
 DQDL_RULESET = "capstone-dqdl-ruleset"
 SILVER_DATABASE = "silver-cheska-capstone-db"
 SILVER_WAREHOUSE_PATH = "s3://cheska-s3-capstone/02_silver/"
