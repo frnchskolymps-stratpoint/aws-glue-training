@@ -129,15 +129,15 @@ def create_tables_if_not_exists(spark):
     # Silver Table
     spark.sql(f"""
         CREATE TABLE IF NOT EXISTS {ICEBERG_CATALOG}.`{SILVER_DATABASE}`.passed (
-            event_time TIMESTAMP,
-            event_type STRING,
-            product_id BIGINT,
-            category_id BIGINT,
-            category_code STRING,
-            brand STRING,
-            price DOUBLE,
-            user_id BIGINT,
-            user_session STRING
+            event_time TIMESTAMP COMMENT 'The timestamp of the event',
+            event_type STRING COMMENT 'The type of the event: view, cart, purchase',
+            product_id BIGINT COMMENT 'The ID of the product',
+            category_id BIGINT COMMENT 'The ID of the category',
+            category_code STRING COMMENT 'The code of the category',
+            brand STRING COMMENT 'The brand of the product depending on the category',
+            price DOUBLE COMMENT 'The price of the product',
+            user_id BIGINT COMMENT 'The ID of the user',
+            user_session STRING COMMENT 'The session of the user'
         )
         USING iceberg
         PARTITIONED BY (months(event_time))
@@ -152,15 +152,15 @@ def create_tables_if_not_exists(spark):
     # Quarantine Table
     spark.sql(f"""
         CREATE TABLE IF NOT EXISTS {ICEBERG_CATALOG}.`{SILVER_DATABASE}`.quarantined (
-            event_time TIMESTAMP,
-            event_type STRING,
-            product_id BIGINT,
-            category_id BIGINT,
-            category_code STRING,
-            brand STRING,
-            price DOUBLE,
-            user_id BIGINT,
-            user_session STRING
+            event_time TIMESTAMP COMMENT 'The timestamp of the event',
+            event_type STRING COMMENT 'The type of the event: view, cart, purchase',
+            product_id BIGINT COMMENT 'The ID of the product',
+            category_id BIGINT COMMENT 'The ID of the category',
+            category_code STRING COMMENT 'The code of the category',
+            brand STRING COMMENT 'The brand of the product depending on the category',
+            price DOUBLE COMMENT 'The price of the product',
+            user_id BIGINT COMMENT 'The ID of the user',
+            user_session STRING COMMENT 'The session of the user'
         )
         USING iceberg
         PARTITIONED BY (months(event_time))

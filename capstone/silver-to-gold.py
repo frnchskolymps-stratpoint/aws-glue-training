@@ -36,6 +36,71 @@ def read_silver(spark):
     silver_table = f"{ICEBERG_CATALOG}.`{SILVER_DATABASE}`.{SILVER_TABLE}"
     return spark.table(silver_table)
 
+def create_gold_tables_if_not_exists(spark):
+    # Product Dimension Table
+    spark.sql(
+        f"""
+        CREATE TABLE IF NOT EXISTS {ICEBERG_CATALOG}.`{GOLD_DATABASE}`.dim_product (
+            product_id BIGINT COMMENT 'Unique surrogate identifier for the product (Primary Key)',
+            category_id BIGINT COMMENT 'Unique identifier for the product category',
+            category_code STRING COMMENT 'Standardized product category taxonomy path',
+            brand STRING COMMENT 'Normalized brand name associated with the product'
+        )
+        USING iceberg
+        LOCATION '{GOLD_WAREHOUSE_PATH}dim_product/'
+        COMMENT 'Gold Layer: Deduplicated Product Dimension table for analytics'
+        TBLPROPERTIES (
+            'format-version' = '2',
+            'write.format.default' = 'parquet'
+        )
+    """
+    )
+
+    # Events Fact Table (Partitioned by Month)
+    spark.sql(
+        f"""
+        CREATE TABLE IF NOT EXISTS {ICEBERG_CATALOG}.`{GOLD_DATABASE}`.fact_events (
+            event_time TIMESTAMP COMMENT 'Timestamp of user interaction (UTC)',
+            event_type STRING COMMENT 'Categorized user action: view, cart, purchase, or remove_from_cart',
+            product_id BIGINT COMMENT 'Foreign key reference to dim_product.product_id',
+            user_id BIGINT COMMENT 'Unique user identifier for session attribution',
+            user_session STRING COMMENT 'Session UUID associated with the user event stream',
+            price DOUBLE COMMENT 'Item price in USD at the time of the event',
+            event_id BIGINT COMMENT 'Monotonically increasing event transaction sequence key'
+        )
+        USING iceberg
+        PARTITIONED BY (months(event_time))
+        LOCATION '{GOLD_WAREHOUSE_PATH}fact_events/'
+        COMMENT 'Gold Layer: Transactional User Events Fact table partitioned by month'
+        TBLPROPERTIES (
+            'format-version' = '2',
+            'write.format.default' = 'parquet',
+            'write.spark.fanout.enabled' = 'true'
+        )
+    """
+    )
+
+    # Finance Audit Fact Table (Partitioned by Audit Month)
+    spark.sql(
+        f"""
+        CREATE TABLE IF NOT EXISTS {ICEBERG_CATALOG}.`{GOLD_DATABASE}`.fact_finance_audit (
+            audit_date DATE COMMENT 'First day of the month representing the audit period',
+            total_records BIGINT COMMENT 'Total record count processed for the month',
+            valid_records BIGINT COMMENT 'Count of records containing valid price metadata',
+            data_health_score DOUBLE COMMENT 'Percentage score of valid records relative to total records (0 to 100)',
+            monthly_revenue_audit DOUBLE COMMENT 'Sum of item prices representing monthly aggregated gross revenue'
+        )
+        USING iceberg
+        PARTITIONED BY (months(audit_date))
+        LOCATION '{GOLD_WAREHOUSE_PATH}fact_finance_audit/'
+        COMMENT 'Gold Layer: Monthly financial metrics and pipeline data health audit'
+        TBLPROPERTIES (
+            'format-version' = '2',
+            'write.format.default' = 'parquet'
+        )
+    """
+    )
+
 # Creation of the dim_product table function
 # Dropping duplicates in product to avoid duplicate product_id values in the dimension table
 def build_dim_product(silver_df):
@@ -104,22 +169,23 @@ def build_fact_finance_audit(silver_df):
         )
     )
 
-def write_iceberg(df, table_name, partition_exprs=None):
-    table_identifier = f"{ICEBERG_CATALOG}.`{GOLD_DATABASE}`.{table_name}"
-    table_location = f"{GOLD_WAREHOUSE_PATH}{table_name}/"
+# Write data into iceberg tables
+def write_to_iceberg(spark, df, table_name):
+    table_identifier = f"{ICEBERG_CATALOG}.`{GOLD_DATABASE}`.`{table_name}`"
+    source_view = f"{table_name}_source"
 
-    writer = (
-        df.writeTo(table_identifier)
-        .using("iceberg")
-        .tableProperty("location", table_location)
-        .tableProperty("format-version", "2")
-        .tableProperty("write.format.default", "parquet")
+    df.createOrReplaceTempView(source_view)
+
+    # Get column names from dataframe -- comma separated
+    cols = ", ".join(df.columns)
+
+    # replaces aggregated tables dynamically -- calculations and aggregations so overwrite is necessary to ensure the latest data is reflected in the gold layer
+    spark.sql(
+        f"""
+        INSERT OVERWRITE {table_identifier}
+        SELECT {cols} FROM {source_view}
+    """
     )
-
-    if partition_exprs:
-        writer = writer.partitionedBy(*partition_exprs)
-
-    writer.createOrReplace()
 
 # MAIN EXECUTION FLOW OF THE JOB SCRIPT
 def main():
@@ -149,13 +215,13 @@ def main():
         print(f"DEBUG: fact_finance_audit rows = {fact_finance_df.count()}")
 
         # Writing the dataframes of dim_product, fact_events, and fact_finance_audit to their respective Iceberg tables
-        write_iceberg(dim_product_df, "dim_product")
+        write_to_iceberg(spark, dim_product_df, "dim_product")
         print("DEBUG: dim_product table creation complete")
 
-        write_iceberg(fact_events_df, "fact_events", [F.months("event_time")])
+        write_to_iceberg(spark, fact_events_df, "fact_events")
         print("DEBUG: fact_events table creation complete")
 
-        write_iceberg(fact_finance_df, "fact_finance_audit", [F.months("audit_date")])
+        write_to_iceberg(spark, fact_finance_df, "fact_finance_audit")
         print("DEBUG: fact_finance_audit table creation complete")
         
         job.commit()
