@@ -60,13 +60,13 @@ def create_gold_tables_if_not_exists(spark):
     spark.sql(
         f"""
         CREATE TABLE IF NOT EXISTS {ICEBERG_CATALOG}.`{GOLD_DATABASE}`.fact_events (
+            event_id BIGINT COMMENT 'Event transaction identifier for the fact table',
             event_time TIMESTAMP COMMENT 'The timestamp of the user interaction',
             event_type STRING COMMENT 'Categorized user action',
             product_id BIGINT COMMENT 'Foreign key reference to dim_product',
             user_id BIGINT COMMENT 'Unique identifier for the user',
             user_session STRING COMMENT 'Session of the user associated with the event',
-            price DOUBLE COMMENT 'Item price of the product',
-            event_id BIGINT COMMENT 'Event transaction identifier for the fact table'
+            price DOUBLE COMMENT 'Item price of the product'
         )
         USING iceberg
         PARTITIONED BY (months(event_time))
@@ -118,30 +118,18 @@ def build_dim_product(silver_df):
 
 # Creation of the fact_events table function -- partitioned by year and month
 def build_fact_events(silver_df):
-    events_df = (
+    return (
         silver_df
+        .where(F.col("event_time").isNotNull())
+        .withColumn("event_id", F.monotonically_increasing_id().cast("long"))
         .select(
+            "event_id",
             F.col("event_time").alias("event_time"),
             F.col("event_type").alias("event_type"),
             F.col("product_id").cast("long").alias("product_id"),
             F.col("user_id").cast("long").alias("user_id"),
             F.col("user_session").alias("user_session"),
             F.col("price").cast("double").alias("price"),
-        )
-        .where(F.col("event_time").isNotNull())
-    )
-
-    event_order = Window.orderBy(
-        F.col("event_time").asc_nulls_last(),
-        F.col("product_id").asc_nulls_last(),
-        F.col("user_id").asc_nulls_last(),
-    )
-
-    return (
-        events_df
-        .withColumn(
-            "event_id",
-            F.row_number().over(event_order).cast("long").alias("event_id"),
         )
     )
 
