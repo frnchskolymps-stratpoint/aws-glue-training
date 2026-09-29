@@ -88,7 +88,7 @@ def create_gold_tables_if_not_exists(spark):
             total_records BIGINT COMMENT 'Total record count processed for the month',
             valid_records BIGINT COMMENT 'Count of records containing valid price',
             data_health_score DOUBLE COMMENT 'Percentage score of valid records relative to total records',
-            monthly_revenue_audit DOUBLE COMMENT 'Total monetary revenue sum computed across all valid events for the month'
+            monthly_revenue_audit DECIMAL(18, 2) COMMENT 'Total monetary revenue sum computed across all valid events for the month'
         )
         USING iceberg
         PARTITIONED BY (months(audit_date))
