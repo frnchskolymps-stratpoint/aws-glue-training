@@ -142,7 +142,7 @@ def build_fact_finance_audit(silver_df):
         .agg(
             F.count("*").alias("total_records"),
             F.sum(F.when(F.col("price").isNotNull(), F.lit(1)).otherwise(F.lit(0))).alias("valid_records"),
-            F.sum(F.col("price")).alias("monthly_revenue_audit"),
+            F.sum(F.col("price")).cast("decimal(18, 2)").alias("monthly_revenue_audit"),
         )
         .withColumn(
             "data_health_score",
